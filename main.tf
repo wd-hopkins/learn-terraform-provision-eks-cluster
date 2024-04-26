@@ -116,3 +116,29 @@ resource "aws_eks_addon" "ebs-csi" {
     "terraform" = "true"
   }
 }
+
+data "aws_iam_policy" "efs_csi_policy" {
+  arn = "arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy"
+}
+
+module "irsa-efs-csi" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-assumable-role-with-oidc"
+  version = "4.7.0"
+
+  create_role                   = true
+  role_name                     = "AmazonEKSTFEFSCSIRole-${module.eks.cluster_name}"
+  provider_url                  = module.eks.oidc_provider
+  role_policy_arns              = [data.aws_iam_policy.efs_csi_policy.arn]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:kube-system:efs-csi-controller-sa"]
+}
+
+resource "aws_eks_addon" "efs-csi" {
+  cluster_name             = module.eks.cluster_name
+  addon_name               = "aws-efs-csi-driver"
+  addon_version            = "v2.0.0-eksbuild.1"
+  service_account_role_arn = module.irsa-efs-csi.iam_role_arn
+  tags = {
+    "eks_addon" = "efs-csi"
+    "terraform" = "true"
+  }
+}
